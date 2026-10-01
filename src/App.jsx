@@ -25,6 +25,10 @@ export default function App() {
   const [soloTrack, setSoloTrack] = useState(null);
   const [soloStatus, setSoloStatus] = useState("");
   const [soloLoading, setSoloLoading] = useState(false);
+  const [soloPlaying, setSoloPlaying] = useState(false);
+  const [soloTime, setSoloTime] = useState(0);
+  const [soloDuration, setSoloDuration] = useState(0);
+  const [playerExpanded, setPlayerExpanded] = useState(false);
   const [members, setMembers] = useState([]);
   const [notice, setNotice] = useState(null);
   const noticeTimer = useRef(null);
@@ -42,6 +46,10 @@ export default function App() {
     audio.load();
     audio.play().catch(() => setSoloStatus("Tap play to start listening."));
   }, [soloTrack?.streamUrl]);
+
+  const formatTime = value => { const n = Math.max(0, Math.floor(Number(value) || 0)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`; };
+  function toggleSoloPlayback() { const audio = soloAudioRef.current; if (!audio) return; if (audio.paused) audio.play().catch(() => setSoloStatus("Tap play to start listening.")); else audio.pause(); }
+  function seekSolo(value) { const audio = soloAudioRef.current; if (audio && Number.isFinite(audio.duration)) audio.currentTime = Number(value); setSoloTime(Number(value)); }
 
   async function enterRoom(id = room) {
     const roomId = id.trim().toUpperCase();
@@ -150,7 +158,11 @@ export default function App() {
       <div className="global-overlays">
       <footer>© 2026 KAYNMUSIC <span>MADE FOR THE MOMENT.</span></footer>
       {notice && <div className="toast-backdrop"><section className="custom-toast" role="alert"><b>{notice.title}</b><p>{notice.message}</p>{notice.detail && <pre className="toast-detail">{notice.detail}</pre>}<button onClick={() => setNotice(null)}>Dismiss</button></section></div>}
-      {soloTrack && <div className="solo-player"><b>{soloTrack.title}</b><audio ref={soloAudioRef} controls onError={() => notify("Playback error", "The browser could not play this track.")}/></div>}
+      {soloTrack && <>
+        <audio className="solo-audio-engine" ref={soloAudioRef} preload="metadata" onTimeUpdate={e => setSoloTime(e.currentTarget.currentTime)} onLoadedMetadata={e => setSoloDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0)} onDurationChange={e => setSoloDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0)} onPlay={() => setSoloPlaying(true)} onPause={() => setSoloPlaying(false)} onEnded={() => setSoloPlaying(false)} onError={() => { setSoloPlaying(false); notify("Playback error", "The browser could not play this track."); }}/>
+        <div className="solo-player"><button className="solo-art-button" onClick={() => setPlayerExpanded(true)} aria-label="Open player"><img src={soloTrack.thumbnail || ""} alt=""/></button><button className="solo-track-info" onClick={() => setPlayerExpanded(true)}><b>{soloTrack.title}</b><span>{soloTrack.channel || "Now playing"}</span></button><div className="solo-controls"><button className="solo-play" onClick={toggleSoloPlayback} aria-label={soloPlaying ? "Pause" : "Play"}>{soloPlaying ? "Ⅱ" : "▶"}</button><span className="solo-time">{formatTime(soloTime)}</span><input aria-label="Seek track" type="range" min="0" max={soloDuration || 0} step="1" value={Math.min(soloTime, soloDuration || 0)} onChange={e => seekSolo(e.target.value)} disabled={!soloDuration}/><span className="solo-time">{formatTime(soloDuration)}</span></div><button className="solo-expand" onClick={() => setPlayerExpanded(true)} aria-label="Expand player">↗</button></div>
+        {playerExpanded && <div className="player-sheet" role="dialog" aria-modal="true" aria-label="Now playing"><button className="player-close" onClick={() => setPlayerExpanded(false)} aria-label="Close player">×</button><p className="player-kicker">KAYNMUSIC / NOW PLAYING</p><img className="player-cover" src={soloTrack.thumbnail || ""} alt="Album artwork"/><div className="player-track-title">{soloTrack.title}</div><div className="player-track-artist">{soloTrack.channel || "YouTube"}</div><div className="sheet-progress"><input aria-label="Seek track" type="range" min="0" max={soloDuration || 0} step="1" value={Math.min(soloTime, soloDuration || 0)} onChange={e => seekSolo(e.target.value)} disabled={!soloDuration}/><div><span>{formatTime(soloTime)}</span><span>{formatTime(soloDuration)}</span></div></div><div className="sheet-controls"><button className="sheet-play" onClick={toggleSoloPlayback} aria-label={soloPlaying ? "Pause" : "Play"}>{soloPlaying ? "Ⅱ" : "▶"}</button></div><p className="player-caption">A little space for the music.</p></div>}
+      </>}
       </div>
     </main>
   </div>;
