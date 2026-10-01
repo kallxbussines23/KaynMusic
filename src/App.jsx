@@ -21,7 +21,7 @@ export default function App() {
   const audioRef = useRef(null);\n  const soloAudioRef = useRef(null);\n  const [soloTrack, setSoloTrack] = useState(null);\n  const [soloStatus, setSoloStatus] = useState("");\n  const [soloLoading, setSoloLoading] = useState(false);
   const [members, setMembers] = useState([]);
 
-  useEffect(() => () => socket?.disconnect(), [socket]);
+  useEffect(() => () => socket?.disconnect(), [socket]);\n  useEffect(() => {\n    if (!soloTrack?.streamUrl || !soloAudioRef.current) return;\n    const audio = soloAudioRef.current;\n    audio.src = soloTrack.streamUrl;\n    audio.load();\n    audio.play().catch(() => setSoloStatus("Tap play to start listening."));\n  }, [soloTrack?.streamUrl]);
 
   async function enterRoom(id = room) {
     const roomId = id.trim().toUpperCase();
