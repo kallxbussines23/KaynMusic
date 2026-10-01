@@ -16,14 +16,19 @@ app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 app.get("/api/health", (_req, res) => res.json({ ok: true, service: "KaynMusic", timestamp: Date.now() }));
 
-// In-memory room chat is a development foundation only. Production rooms need
-// authenticated membership checks, persistence, rate limits, and moderation.
+// Temporary in-memory presence/chat. Add auth, persistence, limits and moderation before production.
 const rooms = new Map();
 io.on("connection", socket => {
   socket.on("room:join", ({ roomId, username } = {}) => {
     if (typeof roomId !== "string" || !/^[A-Z0-9-]{4,24}$/.test(roomId)) {
       socket.emit("room:error", "Room ID tidak valid.");
       return;
+    }
+    if (socket.data.roomId && socket.data.roomId !== roomId) {
+      socket.leave(socket.data.roomId);
+      const previous = rooms.get(socket.data.roomId);
+      previous?.delete(socket.id);
+      if (previous?.size) io.to(socket.data.roomId).emit("room:members", [...previous.values()]);
     }
     socket.join(roomId);
     const members = rooms.get(roomId) || new Map();
@@ -35,13 +40,26 @@ io.on("connection", socket => {
   socket.on("room:chat", ({ text } = {}) => {
     const roomId = socket.data.roomId;
     if (!roomId || typeof text !== "string" || !text.trim()) return;
-    io.to(roomId).emit("room:message", {
-      id: crypto.randomUUID(),
-      username: rooms.get(roomId)?.get(socket.id) || "Guest",
-      text: text.trim().slice(0, 500),
-      at: Date.now()
-    });
+    io.to(roomId).emit("room:message", { id: crypto.randomUUID(), username: rooms.get(roomId)?.get(socket.id) || "Guest", text: text.trim().slice(0, 500), at: Date.now() });
   });
+  socket.on("music:load", ({ url, title } = {}) => {
+    const roomId = socket.data.roomId;
+    if (!roomId || typeof url !== "string" || url.length > 2048) return;
+    try {
+      const parsed = new URL(url);
+      if (!["http:", "https:"].includes(parsed.protocol)) return;
+      io.to(roomId).emit("music:load", { url: parsed.href, title: String(title || "Shared track").slice(0, 120) });
+    } catch { /* Ignore malformed URLs. */ }
+  });
+  for (const event of ["music:play", "music:pause"]) {
+    socket.on(event, ({ currentTime } = {}) => {
+      const roomId = socket.data.roomId;
+      if (!roomId) return;
+      const time = Number(currentTime);
+      if (!Number.isFinite(time) || time < 0) return;
+      socket.to(roomId).emit(event, { currentTime: time });
+    });
+  }
   socket.on("disconnect", () => {
     const roomId = socket.data.roomId;
     if (!roomId) return;
@@ -55,7 +73,6 @@ io.on("connection", socket => {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
 if (fs.existsSync(root)) {
   app.use(express.static(root));
-  // Express 5 / path-to-regexp requires a named wildcard parameter.
   app.get("/{*splat}", (_req, res) => res.sendFile(path.join(root, "index.html")));
 }
 server.listen(PORT, "0.0.0.0", () => console.log(`KaynMusic listening on ${PORT}`));
