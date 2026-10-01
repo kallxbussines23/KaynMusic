@@ -18,10 +18,21 @@ export default function App() {
   const [trackUrl, setTrackUrl] = useState("");
   const [trackName, setTrackName] = useState("");
   const [trackStatus, setTrackStatus] = useState("Paste a direct audio URL to start listening.");
-  const audioRef = useRef(null);\n  const soloAudioRef = useRef(null);\n  const [soloTrack, setSoloTrack] = useState(null);\n  const [soloStatus, setSoloStatus] = useState("");\n  const [soloLoading, setSoloLoading] = useState(false);
+  const audioRef = useRef(null);
+  const soloAudioRef = useRef(null);
+  const [soloTrack, setSoloTrack] = useState(null);
+  const [soloStatus, setSoloStatus] = useState("");
+  const [soloLoading, setSoloLoading] = useState(false);
   const [members, setMembers] = useState([]);
 
-  useEffect(() => () => socket?.disconnect(), [socket]);\n  useEffect(() => {\n    if (!soloTrack?.streamUrl || !soloAudioRef.current) return;\n    const audio = soloAudioRef.current;\n    audio.src = soloTrack.streamUrl;\n    audio.load();\n    audio.play().catch(() => setSoloStatus("Tap play to start listening."));\n  }, [soloTrack?.streamUrl]);
+  useEffect(() => () => socket?.disconnect(), [socket]);
+  useEffect(() => {
+    if (!soloTrack?.streamUrl || !soloAudioRef.current) return;
+    const audio = soloAudioRef.current;
+    audio.src = soloTrack.streamUrl;
+    audio.load();
+    audio.play().catch(() => setSoloStatus("Tap play to start listening."));
+  }, [soloTrack?.streamUrl]);
 
   async function enterRoom(id = room) {
     const roomId = id.trim().toUpperCase();
@@ -91,7 +102,7 @@ export default function App() {
     event.preventDefault();
     if (!trackUrl.trim() || !socket) return;
     let url = trackUrl.trim();
-    if (/youtube\\.com|youtu\\.be/i.test(url)) {
+    if (/youtube\.com|youtu\.be/i.test(url)) {
       setTrackStatus("Resolving YouTube audio…");
       try {
         const response = await fetch("/api/music/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
