@@ -86,7 +86,8 @@ app.get("/api/music/stream", (req, res) => {
   const transcoder = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vn", "-ac", "2", "-ar", "44100", "-b:a", "192k", "-f", "mp3", "pipe:1"], { stdio: ["pipe", "pipe", "pipe"] });
   let stderr = "";
   const abort = () => { extractor.kill("SIGKILL"); transcoder.kill("SIGKILL"); };
-  req.on("close", abort);
+  res.on("close", () => { if (!res.writableEnded) abort(); });
+  transcoder.stdin.on("error", () => {});
   extractor.stdout.pipe(transcoder.stdin);
   transcoder.stdout.pipe(res);
   extractor.stderr.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-4000); });
