@@ -10,6 +10,8 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 
 const app = express();
+app.use(cors());
+app.use(express.json({ limit: "1mb" }));
 
 function runYtDlp(args, timeoutMs = 25000) {
   return new Promise((resolve, reject) => {
@@ -108,8 +110,6 @@ app.get("/api/music/stream", (req, res) => {
 const server = createServer(app);
 const io = new Server(server, { cors: { origin: process.env.CLIENT_ORIGIN || "*" } });
 const PORT = Number(process.env.PORT || 3000);
-app.use(cors());
-app.use(express.json({ limit: "1mb" }));
 app.get("/api/health", (_req, res) => res.json({ ok: true, service: "KaynMusic", timestamp: Date.now() }));
 
 // Temporary in-memory presence/chat. Add auth, persistence, limits and moderation before production.
