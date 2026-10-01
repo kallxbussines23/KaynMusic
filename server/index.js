@@ -70,8 +70,18 @@ app.post("/api/music/resolve", async (req, res) => {
       thumbnail: info.thumbnail || null
     });
   } catch (error) {
-    console.error("YouTube audio resolve failed:", error.message);
-    res.status(502).json({ error: "Audio tidak dapat diambil. Video mungkin dibatasi atau sumber berubah." });
+    const diagnostic = String(error?.message || error || "Unknown yt-dlp error").slice(0, 4000);
+    const errorId = crypto.randomUUID();
+    console.error("[music:resolve] failure", JSON.stringify({
+      errorId, stage: "yt-dlp metadata extraction", url: videoUrl,
+      errorName: error?.name || "Error", diagnostic
+    }));
+    res.status(502).json({
+      error: "Audio tidak dapat diambil.",
+      errorId,
+      stage: "yt-dlp metadata extraction",
+      details: diagnostic
+    });
   }
 });
 
