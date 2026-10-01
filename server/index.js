@@ -9,6 +9,8 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 
+const app = express();
+
 function runYtDlp(args, timeoutMs = 25000) {
   return new Promise((resolve, reject) => {
     const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
@@ -65,7 +67,6 @@ app.post("/api/music/resolve", async (req, res) => {
 });
 
 
-const app = express();
 const server = createServer(app);
 const io = new Server(server, { cors: { origin: process.env.CLIENT_ORIGIN || "*" } });
 const PORT = Number(process.env.PORT || 3000);
