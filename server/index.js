@@ -13,6 +13,20 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
+// Optional private YouTube cookies supplied as base64 via Railway Variables.
+// Never log or expose this file to the frontend.
+const cookiesPath = "/tmp/kayn-youtube-cookies.txt";
+function ytDlpArgs(args) {
+  const encoded = process.env.YOUTUBE_COOKIES_BASE64;
+  if (!encoded) return args;
+  if (!fs.existsSync(cookiesPath)) {
+    const decoded = Buffer.from(encoded, "base64");
+    if (!decoded.length || decoded.length > 2_000_000) throw new Error("Invalid YOUTUBE_COOKIES_BASE64 size");
+    fs.writeFileSync(cookiesPath, decoded, { mode: 0o600 });
+  }
+  return ["--cookies", cookiesPath, ...args];
+}
+
 function runYtDlp(args, timeoutMs = 25000) {
   return new Promise((resolve, reject) => {
     const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
@@ -34,7 +48,7 @@ app.get("/api/music/search", async (req, res) => {
   const query = String(req.query.q || "").trim().slice(0, 160);
   if (!query) return res.status(400).json({ error: "Masukkan kata kunci pencarian." });
   try {
-    const raw = await runYtDlp(["--dump-single-json", "--flat-playlist", "--no-warnings", "--playlist-end", "12", `ytsearch12:${query}`]);
+    const raw = await runYtDlp(ytDlpArgs(["--dump-single-json", "--flat-playlist", "--no-warnings", "--playlist-end", "12", `ytsearch12:${query}`]));
     const data = JSON.parse(raw);
     const entries = (data.entries || []).filter(Boolean).map(item => ({
       id: item.id, title: item.title || "Untitled", channel: item.uploader || item.channel || "YouTube",
@@ -61,7 +75,7 @@ app.post("/api/music/resolve", async (req, res) => {
   const parsed = isYouTubeUrl(videoUrl);
   if (!parsed) return res.status(400).json({ error: "URL YouTube tidak valid." });
   try {
-    const raw = await runYtDlp(["--dump-single-json", "--no-warnings", "--no-playlist", videoUrl]);
+    const raw = await runYtDlp(ytDlpArgs(["--dump-single-json", "--no-warnings", "--no-playlist", videoUrl]));
     const info = JSON.parse(raw);
     res.json({
       url: `/api/music/stream?video=${encodeURIComponent(parsed.href)}`,
@@ -94,7 +108,7 @@ app.get("/api/music/stream", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
 
-  const extractor = spawn("yt-dlp", ["--no-warnings", "--no-playlist", "-f", "bestaudio/best", "-o", "-", videoUrl], { stdio: ["ignore", "pipe", "pipe"] });
+  const extractor = spawn("yt-dlp", ytDlpArgs(["--no-warnings", "--no-playlist", "-f", "bestaudio/best", "-o", "-", videoUrl]), { stdio: ["ignore", "pipe", "pipe"] });
   const transcoder = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vn", "-ac", "2", "-ar", "44100", "-b:a", "192k", "-f", "mp3", "pipe:1"], { stdio: ["pipe", "pipe", "pipe"] });
   let stderr = "";
   const abort = () => { extractor.kill("SIGKILL"); transcoder.kill("SIGKILL"); };
