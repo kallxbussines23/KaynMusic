@@ -89,7 +89,7 @@ export default function App() {
     try {
       const response = await fetch("/api/music/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: track.url }) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Unable to resolve track");
+      if (!response.ok) { const error = new Error(data.error || "Unable to resolve track"); error.details = [data.stage, data.errorId && `Error ID: ${data.errorId}`, data.details].filter(Boolean).join("\n"); throw error; }
       setSoloTrack({ ...track, streamUrl: data.url, title: data.title || track.title });
       setSoloStatus("Ready to play");
       const audio = soloAudioRef.current;
@@ -97,7 +97,7 @@ export default function App() {
         audio.src = data.url; audio.load();
         try { await audio.play(); } catch { setSoloStatus("Tap play to start listening."); }
       }
-    } catch (error) { const message = error.message || "Could not play this track."; setSoloStatus(message); notify("Playback failed", message, error.stack || error.name || "Request /api/music/resolve"); }
+    } catch (error) { const message = error.message || "Could not play this track."; setSoloStatus(message); notify("Playback failed", message, error.details || error.stack || error.name || "Request /api/music/resolve"); }
     finally { setSoloLoading(false); }
   }
   function chooseTrack(track) { setTrackName(track.title); setTrackUrl(track.url); setSection("Listening rooms"); }
@@ -115,9 +115,9 @@ export default function App() {
       try {
         const response = await fetch("/api/music/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Audio resolution failed");
+        if (!response.ok) { const error = new Error(data.error || "Audio resolution failed"); error.details = [data.stage, data.errorId && `Error ID: ${data.errorId}`, data.details].filter(Boolean).join("\n"); throw error; }
         url = data.url;
-      } catch (error) { const message = error.message || "Could not resolve audio."; setTrackStatus(message); notify("Could not share track", message, error.stack || error.name || "Request /api/music/resolve"); return; }
+      } catch (error) { const message = error.message || "Could not resolve audio."; setTrackStatus(message); notify("Could not share track", message, error.details || error.stack || error.name || "Request /api/music/resolve"); return; }
     }
     socket.emit("music:load", { url, title: trackName.trim() || "Shared track" });
     setTrackStatus("Track shared with room.");
