@@ -46,24 +46,61 @@ app.get("/api/music/search", async (req, res) => {
   }
 });
 
+function isYouTubeUrl(value) {
+  try {
+    const parsed = new URL(value);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    return ["youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"].includes(host) ? parsed : null;
+  } catch { return null; }
+}
+
 app.post("/api/music/resolve", async (req, res) => {
   const videoUrl = String(req.body?.url || "");
-  let parsed;
-  try { parsed = new URL(videoUrl); } catch { return res.status(400).json({ error: "URL tidak valid." }); }
-  const host = parsed.hostname.toLowerCase().replace(/^www\\./, "");
-  if (!["youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"].includes(host)) {
-    return res.status(400).json({ error: "Saat ini hanya URL YouTube yang didukung." });
-  }
+  const parsed = isYouTubeUrl(videoUrl);
+  if (!parsed) return res.status(400).json({ error: "URL YouTube tidak valid." });
   try {
-    const raw = await runYtDlp(["--dump-single-json", "--no-warnings", "--no-playlist", "-f", "bestaudio/best", videoUrl]);
+    const raw = await runYtDlp(["--dump-single-json", "--no-warnings", "--no-playlist", videoUrl]);
     const info = JSON.parse(raw);
-    const audioUrl = info.url;
-    if (!audioUrl) throw new Error("No audio stream returned");
-    res.json({ url: audioUrl, title: info.title || "YouTube track", duration: info.duration || null, thumbnail: info.thumbnail || null });
+    res.json({
+      url: `/api/music/stream?video=${encodeURIComponent(parsed.href)}`,
+      title: info.title || "YouTube track",
+      duration: info.duration || null,
+      thumbnail: info.thumbnail || null
+    });
   } catch (error) {
     console.error("YouTube audio resolve failed:", error.message);
     res.status(502).json({ error: "Audio tidak dapat diambil. Video mungkin dibatasi atau sumber berubah." });
   }
+});
+
+// Same-origin streaming proxy: yt-dlp stdout -> FFmpeg MP3 stdout -> browser.
+// No complete audio file is written to disk.
+app.get("/api/music/stream", (req, res) => {
+  const videoUrl = String(req.query.video || "");
+  if (!isYouTubeUrl(videoUrl)) return res.status(400).json({ error: "URL YouTube tidak valid." });
+  res.setHeader("Content-Type", "audio/mpeg");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+
+  const extractor = spawn("yt-dlp", ["--no-warnings", "--no-playlist", "-f", "bestaudio/best", "-o", "-", videoUrl], { stdio: ["ignore", "pipe", "pipe"] });
+  const transcoder = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vn", "-ac", "2", "-ar", "44100", "-b:a", "192k", "-f", "mp3", "pipe:1"], { stdio: ["pipe", "pipe", "pipe"] });
+  let stderr = "";
+  const abort = () => { extractor.kill("SIGKILL"); transcoder.kill("SIGKILL"); };
+  req.on("close", abort);
+  extractor.stdout.pipe(transcoder.stdin);
+  transcoder.stdout.pipe(res);
+  extractor.stderr.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-4000); });
+  transcoder.stderr.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-4000); });
+  const fail = (name, code) => {
+    if (res.headersSent) { if (!res.writableEnded) res.end(); }
+    else res.status(502).json({ error: "Streaming gagal diproses." });
+    console.error(name + " stream error:", code, stderr);
+    abort();
+  };
+  extractor.on("error", error => fail("yt-dlp", error.message));
+  transcoder.on("error", error => fail("ffmpeg", error.message));
+  extractor.on("close", code => { if (code && !res.writableEnded) fail("yt-dlp", code); });
+  transcoder.on("close", code => { if (code && !res.writableEnded) fail("ffmpeg", code); });
 });
 
 
@@ -104,9 +141,9 @@ io.on("connection", socket => {
     const roomId = socket.data.roomId;
     if (!roomId || typeof url !== "string" || url.length > 2048) return;
     try {
-      const parsed = new URL(url);
-      if (!["http:", "https:"].includes(parsed.protocol)) return;
-      io.to(roomId).emit("music:load", { url: parsed.href, title: String(title || "Shared track").slice(0, 120) });
+      const parsed = url.startsWith("/api/music/stream?") ? null : new URL(url);
+      if (parsed && !["http:", "https:"].includes(parsed.protocol)) return;
+      io.to(roomId).emit("music:load", { url: parsed ? parsed.href : url, title: String(title || "Shared track").slice(0, 120) });
     } catch { /* Ignore malformed URLs. */ }
   });
   for (const event of ["music:play", "music:pause"]) {
