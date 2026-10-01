@@ -7,6 +7,63 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
+
+function runYtDlp(args, timeoutMs = 25000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    const timer = setTimeout(() => child.kill("SIGKILL"), timeoutMs);
+    child.stdout.on("data", chunk => { stdout += chunk.toString(); if (stdout.length > 5_000_000) child.kill("SIGKILL"); });
+    child.stderr.on("data", chunk => { stderr += chunk.toString(); if (stderr.length > 20_000) stderr = stderr.slice(-20_000); });
+    child.on("error", error => { clearTimeout(timer); reject(error); });
+    child.on("close", code => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(stderr.trim() || `yt-dlp exited with code ${code}`));
+      resolve(stdout.trim());
+    });
+  });
+}
+
+app.get("/api/music/search", async (req, res) => {
+  const query = String(req.query.q || "").trim().slice(0, 160);
+  if (!query) return res.status(400).json({ error: "Masukkan kata kunci pencarian." });
+  try {
+    const raw = await runYtDlp(["--dump-single-json", "--flat-playlist", "--no-warnings", "--playlist-end", "12", `ytsearch12:${query}`]);
+    const data = JSON.parse(raw);
+    const entries = (data.entries || []).filter(Boolean).map(item => ({
+      id: item.id, title: item.title || "Untitled", channel: item.uploader || item.channel || "YouTube",
+      duration: item.duration || null, thumbnail: item.thumbnail || item.thumbnails?.at(-1)?.url || null,
+      url: item.url?.startsWith("http") ? item.url : `https://www.youtube.com/watch?v=${item.id}`
+    }));
+    res.json({ results: entries });
+  } catch (error) {
+    console.error("YouTube search failed:", error.message);
+    res.status(502).json({ error: "Pencarian YouTube gagal. Coba lagi nanti." });
+  }
+});
+
+app.post("/api/music/resolve", async (req, res) => {
+  const videoUrl = String(req.body?.url || "");
+  let parsed;
+  try { parsed = new URL(videoUrl); } catch { return res.status(400).json({ error: "URL tidak valid." }); }
+  const host = parsed.hostname.toLowerCase().replace(/^www\\./, "");
+  if (!["youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"].includes(host)) {
+    return res.status(400).json({ error: "Saat ini hanya URL YouTube yang didukung." });
+  }
+  try {
+    const raw = await runYtDlp(["--dump-single-json", "--no-warnings", "--no-playlist", "-f", "bestaudio/best", videoUrl]);
+    const info = JSON.parse(raw);
+    const audioUrl = info.url;
+    if (!audioUrl) throw new Error("No audio stream returned");
+    res.json({ url: audioUrl, title: info.title || "YouTube track", duration: info.duration || null, thumbnail: info.thumbnail || null });
+  } catch (error) {
+    console.error("YouTube audio resolve failed:", error.message);
+    res.status(502).json({ error: "Audio tidak dapat diambil. Video mungkin dibatasi atau sumber berubah." });
+  }
+});
+
 
 const app = express();
 const server = createServer(app);
