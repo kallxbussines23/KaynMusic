@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
+import crypto from "node:crypto";
 
 const app = express();
 const server = createServer(app);
@@ -54,6 +55,7 @@ io.on("connection", socket => {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist");
 if (fs.existsSync(root)) {
   app.use(express.static(root));
-  app.get("*", (_req, res) => res.sendFile(path.join(root, "index.html")));
+  // Express 5 / path-to-regexp requires a named wildcard parameter.
+  app.get("/{*splat}", (_req, res) => res.sendFile(path.join(root, "index.html")));
 }
 server.listen(PORT, "0.0.0.0", () => console.log(`KaynMusic listening on ${PORT}`));
