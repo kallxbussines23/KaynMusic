@@ -146,7 +146,7 @@ export default function App() {
       {section === "Your library" && <section className="content"><p className="eyebrow">PERSONAL COLLECTION</p><h1>Your <em>library.</em></h1><p className="intro">A home for the tracks and playlists you love.</p><div className="empty"><b>▤</b><h3>Your collection starts here.</h3><p>Favorites and playlists will appear here when connected to your account.</p></div></section>}
       <div className="global-overlays">
       <footer>© 2026 KAYNMUSIC <span>MADE FOR THE MOMENT.</span></footer>
-      {notice && <div className="toast-backdrop"><section className="custom-toast" role="alert"><b>{notice.title}</b><p>{notice.message}</p><button onClick={() => setNotice(null)}>Dismiss</button></section></div>}
+      {notice && <div className="toast-backdrop"><section className="custom-toast" role="alert"><b>{notice.title}</b><p>{notice.message}</p>{notice.detail && <pre className="toast-detail">{notice.detail}</pre>}<button onClick={() => setNotice(null)}>Dismiss</button></section></div>}
       {soloTrack && <div className="solo-player"><b>{soloTrack.title}</b><audio ref={soloAudioRef} controls onError={() => notify("Playback error", "The browser could not play this track.")}/></div>}
       </div>
     </main>
