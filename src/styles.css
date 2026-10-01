@@ -7,3 +7,33 @@
 .result-actions{display:flex;gap:6px;flex-shrink:0}.yt-result .result-actions button{white-space:nowrap}.yt-result .result-actions button:first-child{background:#b8d7a5;color:#20251c;border-color:#b8d7a5}.solo-player{position:fixed;z-index:20;bottom:0;left:250px;right:0;min-height:86px;background:#20211e;border-top:1px solid #44473e;display:flex;align-items:center;gap:16px;padding:12px 22px;box-shadow:0 -12px 35px #0005}.solo-track{display:flex;align-items:center;gap:11px;min-width:0;flex:1}.solo-track img{width:52px;height:52px;object-fit:cover;border-radius:6px;background:#30322c}.solo-track div{display:flex;flex-direction:column;gap:5px;min-width:0}.solo-track b{font-size:12px;color:#f0f0eb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.solo-track span{font-size:10px;color:#a4a69d;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.solo-player audio{width:min(420px,45%);height:38px}.solo-to-room{border:1px solid #56634d;background:#283023;color:#c2ddb2;border-radius:7px;padding:10px;font-size:11px;white-space:nowrap}@media(max-width:700px){.solo-player{left:0;gap:9px;padding:10px 12px;min-height:76px}.solo-track img{width:42px;height:42px}.solo-player audio{width:38%;min-width:100px}.solo-to-room{font-size:10px;padding:9px 7px}}@media(max-width:420px){.solo-track{flex:1}.solo-player{flex-wrap:wrap}.solo-player audio{order:3;width:100%;height:34px}.solo-to-room{margin-left:auto}}
 
 .toast-backdrop{position:fixed;z-index:100;top:18px;right:18px;width:min(420px,calc(100vw - 36px));pointer-events:none}.custom-toast{pointer-events:auto;display:flex;gap:13px;padding:16px;background:#23231f;border:1px solid #684744;border-left:3px solid #e17c70;border-radius:12px;box-shadow:0 18px 60px #0009;color:#efeee9;animation:toast-in .22s ease-out}.custom-toast.success{border-color:#4d6a42;border-left-color:#a9cf91}.toast-icon{width:26px;height:26px;flex:0 0 26px;border-radius:50%;display:grid;place-items:center;background:#512d2a;color:#ffb5ab;font-weight:700}.custom-toast.success .toast-icon{background:#2d4227;color:#c3e5ad}.toast-content{min-width:0;flex:1}.toast-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.toast-heading b{font-size:13px}.toast-heading button{border:0;background:transparent;color:#a8aaa1;font-size:22px;line-height:1;cursor:pointer}.toast-content>p{font-size:12px;line-height:1.5;color:#d0d0c8;margin:7px 0 0;overflow-wrap:anywhere}.toast-content details{margin-top:10px;border-top:1px solid #41423b;padding-top:8px}.toast-content summary{font-size:11px;color:#b8d7a5;cursor:pointer}.toast-content pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;margin:8px 0 0;padding:10px;background:#171815;border-radius:7px;color:#c3c6bb;font:10px/1.5 'DM Mono',monospace}.custom-toast:not(:has(details summary)){border-bottom:0}@keyframes toast-in{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}@media(max-width:520px){.toast-backdrop{top:12px;right:12px;width:calc(100vw - 24px)}.custom-toast{padding:13px}}
+
+
+/* KaynMusic custom playback UI */
+.solo-audio-engine{display:none!important}
+.solo-player{position:fixed;z-index:30;left:248px;right:0;bottom:0;min-height:88px;padding:12px 26px;display:flex;align-items:center;gap:15px;background:#1b1c19;border-top:1px solid #41443b;box-shadow:0 -12px 34px #0005}
+.solo-art-button{width:56px;height:56px;padding:0;border:0;background:#2a2c26;border-radius:7px;overflow:hidden;flex:none;cursor:pointer}
+.solo-art-button img{display:block;width:100%;height:100%;object-fit:cover}
+.solo-track-info{border:0;background:none;text-align:left;display:flex;flex-direction:column;gap:5px;min-width:0;width:24%;cursor:pointer}
+.solo-track-info b{font-size:12px;color:#f1f1eb;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.solo-track-info span{font-size:11px;color:#969990;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.solo-controls{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
+.solo-play{width:39px;height:39px;flex:none;border:0;border-radius:50%;background:#b9d9a6;color:#1b2118;font-size:17px;cursor:pointer;display:grid;place-items:center;padding-left:3px}
+.solo-time{font:10px 'DM Mono',monospace;color:#92958c;font-variant-numeric:tabular-nums}
+.solo-controls input,.sheet-progress input{width:100%;min-width:40px;accent-color:#b9d9a6;cursor:pointer}
+.solo-expand{border:1px solid #45483e;border-radius:7px;background:#252722;color:#b8d7a5;padding:9px 12px;cursor:pointer}
+.player-sheet{position:fixed;z-index:60;inset:0;background:#111210;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 22px 110px;overflow:auto;animation:player-rise .25s ease-out}
+@keyframes player-rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.player-close{position:absolute;top:22px;right:24px;width:42px;height:42px;border:1px solid #3b3d37;border-radius:50%;background:#20211d;color:#e9eae6;font-size:26px;cursor:pointer}
+.player-kicker{font:10px 'DM Mono',monospace;letter-spacing:2px;color:#a8c994;margin:0 0 25px}
+.player-cover{width:min( min(66vw, 360px), 42vh);height:min(min(66vw, 360px),42vh);object-fit:cover;border-radius:13px;background:#282a25;box-shadow:0 24px 70px #0008}
+.player-track-title{font:700 clamp(18px,3vw,25px) Manrope,sans-serif;color:#f1f1eb;text-align:center;max-width:600px;margin:28px 0 7px}
+.player-track-artist{font-size:13px;color:#9a9d94;text-align:center}
+.sheet-progress{width:min(100%,520px);margin-top:30px}
+.sheet-progress input{width:100%}
+.sheet-progress>div{display:flex;justify-content:space-between;font:10px 'DM Mono';color:#92958c;margin-top:6px}
+.sheet-controls{margin-top:25px}
+.sheet-play{width:62px;height:62px;border:0;border-radius:50%;background:#b9d9a6;color:#1b2118;font-size:24px;cursor:pointer;padding-left:5px}
+.player-caption{position:absolute;bottom:92px;font:10px 'DM Mono';letter-spacing:1px;color:#686c63}
+@media(max-width:760px){.solo-player{left:0;bottom:65px;min-height:76px;padding:9px 12px;gap:10px}.solo-art-button{width:45px;height:45px}.solo-track-info{width:25%}.solo-track-info b{font-size:11px}.solo-track-info span{font-size:10px}.solo-controls{gap:7px}.solo-play{width:34px;height:34px;font-size:15px}.solo-time{font-size:9px}.solo-expand{padding:7px 9px}}
+@media(max-width:420px){.solo-player{gap:8px}.solo-art-button{width:40px;height:40px}.solo-track-info{width:28%}.solo-controls{gap:5px}.solo-time{font-size:8px}.solo-expand{display:none}.player-sheet{padding-bottom:100px}}
