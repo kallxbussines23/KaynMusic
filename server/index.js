@@ -79,37 +79,76 @@ app.post("/api/music/resolve", (req, res) => {
   res.json({ url: `/api/music/stream?url=${encodeURIComponent(parsed.href)}` });
 });
 
-// Same-origin streaming proxy: yt-dlp stdout -> FFmpeg MP3 stdout -> browser.
-// No complete audio file is written to disk.
-app.get("/api/music/stream", (req, res) => {
+// Cookie-free streaming via public Piped/Invidious instances.
+// These services are community-operated and can be unavailable or rate-limited.
+const PIPED_INSTANCES = (process.env.PIPED_INSTANCES || "https://pipedapi.kavin.rocks,https://pipedapi.adminforge.de")
+  .split(",").map(value => value.trim().replace(/\/$/, "")).filter(Boolean);
+const INVIDIOUS_INSTANCES = (process.env.INVIDIOUS_INSTANCES || "https://inv.nadeko.net,https://yewtu.be")
+  .split(",").map(value => value.trim().replace(/\/$/, "")).filter(Boolean);
+
+async function getRemoteAudio(videoId) {
+  const failures = [];
+  for (const base of PIPED_INSTANCES) {
+    try {
+      const response = await fetch(`${base}/streams/${encodeURIComponent(videoId)}`, { signal: AbortSignal.timeout(12000) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const stream = (data.audioStreams || []).filter(item => item.url && !item.videoOnly)
+        .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+      if (stream) return { url: stream.url, type: stream.mimeType?.split(";")[0] || "audio/webm", provider: "Piped" };
+      throw new Error("No audioStreams returned");
+    } catch (error) { failures.push(`Piped ${base}: ${error.message}`); }
+  }
+  for (const base of INVIDIOUS_INSTANCES) {
+    try {
+      const response = await fetch(`${base}/api/v1/videos/${encodeURIComponent(videoId)}`, { signal: AbortSignal.timeout(12000) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const stream = (data.adaptiveFormats || []).filter(item => item.url && item.type?.startsWith("audio/"))
+        .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0]
+        || (data.formatStreams || []).find(item => item.url && item.type?.startsWith("audio/"));
+      if (stream) return { url: stream.url, type: stream.type?.split(";")[0] || "audio/mp4", provider: "Invidious" };
+      throw new Error("No audio format returned");
+    } catch (error) { failures.push(`Invidious ${base}: ${error.message}`); }
+  }
+  const error = new Error("All cookie-free audio providers failed");
+  error.details = failures;
+  throw error;
+}
+
+app.get("/api/music/stream", async (req, res) => {
   const videoUrl = String(req.query.url || req.query.video || "");
-  if (!isYouTubeUrl(videoUrl)) return res.status(400).json({ error: "URL YouTube tidak valid." });
-  res.setHeader("Content-Type", "audio/mpeg");
-  res.setHeader("Cache-Control", "no-store");
-  res.setHeader("X-Content-Type-Options", "nosniff");
+  const parsed = isYouTubeUrl(videoUrl);
+  if (!parsed) return res.status(400).json({ error: "URL YouTube tidak valid." });
+  const videoId = parsed.hostname.includes("youtu.be")
+    ? parsed.pathname.slice(1).split("/")[0]
+    : parsed.searchParams.get("v") || parsed.pathname.split("/").filter(Boolean).at(-1);
+  if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) return res.status(400).json({ error: "ID video YouTube tidak valid." });
 
-  const extractor = spawn("yt-dlp", ytDlpArgs(["--no-warnings", "--no-playlist", "--extractor-args", "youtube:player_client=tv", "-f", "bestaudio/best", "-o", "-", videoUrl]), { stdio: ["ignore", "pipe", "pipe"] });
-  const transcoder = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vn", "-ac", "2", "-ar", "44100", "-b:a", "192k", "-f", "mp3", "pipe:1"], { stdio: ["pipe", "pipe", "pipe"] });
-  let stderr = "";
-  const abort = () => { extractor.kill("SIGKILL"); transcoder.kill("SIGKILL"); };
-  res.on("close", () => { if (!res.writableEnded) abort(); });
-  transcoder.stdin.on("error", () => {});
-  extractor.stdout.pipe(transcoder.stdin);
-  transcoder.stdout.pipe(res);
-  extractor.stderr.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-4000); });
-  transcoder.stderr.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-4000); });
-  const fail = (name, code) => {
-    if (res.headersSent) { if (!res.writableEnded) res.end(); }
-    else res.status(502).json({ error: "Streaming gagal diproses." });
-    console.error(name + " stream error:", code, stderr);
-    abort();
-  };
-  extractor.on("error", error => fail("yt-dlp", error.message));
-  transcoder.on("error", error => fail("ffmpeg", error.message));
-  extractor.on("close", code => { if (code && !res.writableEnded) fail("yt-dlp", code); });
-  transcoder.on("close", code => { if (code && !res.writableEnded) fail("ffmpeg", code); });
+  try {
+    const audio = await getRemoteAudio(videoId);
+    const upstream = await fetch(audio.url, { headers: { "User-Agent": "Mozilla/5.0 KaynMusic/1.0" }, signal: AbortSignal.timeout(20000) });
+    if (!upstream.ok || !upstream.body) throw new Error(`${audio.provider} audio fetch failed: HTTP ${upstream.status}`);
+    res.status(200);
+    res.setHeader("Content-Type", audio.type);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (upstream.headers.get("content-length")) res.setHeader("Content-Length", upstream.headers.get("content-length"));
+    console.log(`[music:stream] provider=${audio.provider} video=${videoId}`);
+    const { Readable } = await import("node:stream");
+    Readable.fromWeb(upstream.body).on("error", error => {
+      console.error("[music:stream] upstream pipe error:", error.message);
+      if (!res.writableEnded) res.destroy(error);
+    }).pipe(res);
+  } catch (error) {
+    console.error("[music:stream] all providers failed:", error.message, error.details || "");
+    if (!res.headersSent) res.status(502).json({
+      error: "Sumber audio sedang tidak tersedia. Coba lagi nanti.",
+      code: "AUDIO_PROVIDERS_UNAVAILABLE"
+    });
+    else if (!res.writableEnded) res.end();
+  }
 });
-
 
 const server = createServer(app);
 const io = new Server(server, { cors: { origin: process.env.CLIENT_ORIGIN || "*" } });
