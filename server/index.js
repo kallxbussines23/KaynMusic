@@ -144,14 +144,18 @@ app.get("/api/music/stream", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
 
+  // Pipe audio through FFmpeg without writing the complete track to disk.
+  // Frequent packet flushing reduces startup latency for progressive playback.
   const extractor = spawn("yt-dlp", ytDlpArgs([
     "--force-ipv4", "--ignore-config", "--no-warnings", "--no-playlist",
-    "--extractor-args", "youtube:player_client=tv_downgraded,android_vr,web_embedded",
+    "--no-part", "--extractor-args", "youtube:player_client=tv_downgraded,android_vr,web_embedded",
     "-f", "bestaudio/best", "-o", "-", videoUrl
   ]), { stdio: ["ignore", "pipe", "pipe"] });
   const transcoder = spawn("ffmpeg", [
-    "-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vn",
-    "-ac", "2", "-ar", "44100", "-b:a", "192k", "-f", "mp3", "pipe:1"
+    "-hide_banner", "-loglevel", "error", "-fflags", "nobuffer",
+    "-i", "pipe:0", "-vn", "-ac", "2", "-ar", "44100", "-b:a", "160k",
+    "-flush_packets", "1", "-write_xing", "0", "-id3v2_version", "0",
+    "-f", "mp3", "pipe:1"
   ], { stdio: ["pipe", "pipe", "pipe"] });
   let stderr = "";
   let failed = false;
