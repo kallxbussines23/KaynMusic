@@ -47,18 +47,36 @@ function runYtDlp(args, timeoutMs = 25000) {
 app.get("/api/music/search", async (req, res) => {
   const query = String(req.query.q || "").trim().slice(0, 160);
   if (!query) return res.status(400).json({ error: "Masukkan kata kunci pencarian." });
+  const failures = [];
+  for (const base of PIPED_INSTANCES) {
+    try {
+      const response = await fetch(`${base}/search?q=${encodeURIComponent(query)}&filter=videos`, { signal: AbortSignal.timeout(12000) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      const entries = (Array.isArray(data) ? data : []).filter(item => item.type === "stream" && item.url)
+        .slice(0, 12).map(item => {
+          const id = String(item.url).split("v=").pop().split("&")[0];
+          return { id, title: item.title || "Untitled", channel: item.uploaderName || "YouTube",
+            duration: item.duration || null, thumbnail: item.thumbnail || null,
+            url: `https://www.youtube.com/watch?v=${id}` };
+        }).filter(item => /^[a-zA-Z0-9_-]{11}$/.test(item.id));
+      if (entries.length) return res.json({ results: entries, provider: "Piped" });
+      throw new Error("No video results");
+    } catch (error) { failures.push(`${base}: ${error.message}`); }
+  }
+  // Last resort: yt-dlp search may still work on some deployments.
   try {
-    const raw = await runYtDlp(ytDlpArgs(["--dump-single-json", "--flat-playlist", "--no-warnings", "--playlist-end", "12", `ytsearch12:${query}`]));
+    const raw = await runYtDlp(["--dump-single-json", "--flat-playlist", "--no-warnings", "--playlist-end", "12", `ytsearch12:${query}`]);
     const data = JSON.parse(raw);
     const entries = (data.entries || []).filter(Boolean).map(item => ({
       id: item.id, title: item.title || "Untitled", channel: item.uploader || item.channel || "YouTube",
       duration: item.duration || null, thumbnail: item.thumbnail || item.thumbnails?.at(-1)?.url || null,
       url: item.url?.startsWith("http") ? item.url : `https://www.youtube.com/watch?v=${item.id}`
     }));
-    res.json({ results: entries });
+    return res.json({ results: entries, provider: "yt-dlp" });
   } catch (error) {
-    console.error("YouTube search failed:", error.message);
-    res.status(502).json({ error: "Pencarian YouTube gagal. Coba lagi nanti." });
+    console.error("Music search providers failed:", [...failures, error.message]);
+    return res.status(502).json({ error: "Pencarian musik sedang tidak tersedia. Coba lagi nanti." });
   }
 });
 
