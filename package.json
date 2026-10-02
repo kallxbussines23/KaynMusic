@@ -8,15 +8,18 @@
     "dev:client": "vite --host 0.0.0.0",
     "dev:server": "node --watch server/index.js",
     "build": "vite build",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "start:bot": "node bot/index.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "@yudzxml/baileys": "^7.6.6",
     "concurrently": "latest",
     "cors": "latest",
     "dotenv": "latest",
     "express": "latest",
     "firebase": "^12.19.0",
+    "pino": "^9.0.0",
     "react": "latest",
     "react-dom": "latest",
     "socket.io": "latest",
