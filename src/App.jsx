@@ -97,18 +97,21 @@ export default function App() {
   async function playSolo(track) {
     setSoloLoading(true); setSoloStatus("Preparing audio stream…");
     try {
-      const response = await fetch("/api/music/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: track.url }) });
-      const data = await response.json();
-      if (!response.ok) { const error = new Error(data.error || "Unable to resolve track"); error.details = [data.stage, data.errorId && `Error ID: ${data.errorId}`, data.details].filter(Boolean).join("\n"); throw error; }
-      setSoloTrack({ ...track, streamUrl: data.url, title: data.title || track.title });
+      // Use metadata already returned by search; start the stream directly.
+      const streamUrl = `/api/music/stream?url=${encodeURIComponent(track.url)}`;
+      setSoloTrack({ ...track, streamUrl, title: track.title || "YouTube track" });
       setSoloStatus("Ready to play");
       const audio = soloAudioRef.current;
       if (audio) {
-        audio.src = data.url; audio.load();
+        audio.src = streamUrl;
+        audio.load();
         try { await audio.play(); } catch { setSoloStatus("Tap play to start listening."); }
       }
-    } catch (error) { const message = error.message || "Could not play this track."; setSoloStatus(message); notify("Playback failed", message, error.details || error.stack || error.name || "Request /api/music/resolve"); }
-    finally { setSoloLoading(false); }
+    } catch (error) {
+      const message = error.message || "Could not play this track.";
+      setSoloStatus(message);
+      notify("Playback failed", message, error.stack || error.name || "Direct audio stream");
+    } finally { setSoloLoading(false); }
   }
   function chooseTrack(track) { setTrackName(track.title); setTrackUrl(track.url); setSection("Listening rooms"); }
   function sendMessage(event) {
@@ -120,14 +123,8 @@ export default function App() {
     event.preventDefault();
     if (!trackUrl.trim() || !socket) return;
     let url = trackUrl.trim();
-    if (/youtube\.com|youtu\.be/i.test(url)) {
-      setTrackStatus("Resolving YouTube audio…");
-      try {
-        const response = await fetch("/api/music/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url }) });
-        const data = await response.json();
-        if (!response.ok) { const error = new Error(data.error || "Audio resolution failed"); error.details = [data.stage, data.errorId && `Error ID: ${data.errorId}`, data.details].filter(Boolean).join("\n"); throw error; }
-        url = data.url;
-      } catch (error) { const message = error.message || "Could not resolve audio."; setTrackStatus(message); notify("Could not share track", message, error.details || error.stack || error.name || "Request /api/music/resolve"); return; }
+    if (/youtube\\.com|youtu\\.be/i.test(url)) {
+      url = `/api/music/stream?url=${encodeURIComponent(url)}`;
     }
     socket.emit("music:load", { url, title: trackName.trim() || "Shared track" });
     setTrackStatus("Track shared with room.");
