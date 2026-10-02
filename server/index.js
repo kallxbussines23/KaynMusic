@@ -88,7 +88,7 @@ app.get("/api/music/stream", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
 
-  const extractor = spawn("yt-dlp", ytDlpArgs(["--no-warnings", "--no-playlist", "-f", "bestaudio/best", "-o", "-", videoUrl]), { stdio: ["ignore", "pipe", "pipe"] });
+  const extractor = spawn("yt-dlp", ytDlpArgs(["--no-warnings", "--no-playlist", "--extractor-args", "youtube:player_client=tv", "-f", "bestaudio/best", "-o", "-", videoUrl]), { stdio: ["ignore", "pipe", "pipe"] });
   const transcoder = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-vn", "-ac", "2", "-ar", "44100", "-b:a", "192k", "-f", "mp3", "pipe:1"], { stdio: ["pipe", "pipe", "pipe"] });
   let stderr = "";
   const abort = () => { extractor.kill("SIGKILL"); transcoder.kill("SIGKILL"); };
