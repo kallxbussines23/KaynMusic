@@ -70,39 +70,19 @@ function isYouTubeUrl(value) {
   } catch { return null; }
 }
 
-app.post("/api/music/resolve", async (req, res) => {
+app.post("/api/music/resolve", (req, res) => {
+  // Compatibility endpoint: do not perform a separate metadata extraction.
+  // Search results already contain title, duration and thumbnail.
   const videoUrl = String(req.body?.url || "");
   const parsed = isYouTubeUrl(videoUrl);
   if (!parsed) return res.status(400).json({ error: "URL YouTube tidak valid." });
-  try {
-    const raw = await runYtDlp(ytDlpArgs(["--dump-single-json", "--no-warnings", "--no-playlist", videoUrl]));
-    const info = JSON.parse(raw);
-    res.json({
-      url: `/api/music/stream?video=${encodeURIComponent(parsed.href)}`,
-      title: info.title || "YouTube track",
-      duration: info.duration || null,
-      thumbnail: info.thumbnail || null
-    });
-  } catch (error) {
-    const diagnostic = String(error?.message || error || "Unknown yt-dlp error").slice(0, 4000);
-    const errorId = crypto.randomUUID();
-    console.error("[music:resolve] failure", JSON.stringify({
-      errorId, stage: "yt-dlp metadata extraction", url: videoUrl,
-      errorName: error?.name || "Error", diagnostic
-    }));
-    res.status(502).json({
-      error: "Audio tidak dapat diambil.",
-      errorId,
-      stage: "yt-dlp metadata extraction",
-      details: diagnostic
-    });
-  }
+  res.json({ url: `/api/music/stream?url=${encodeURIComponent(parsed.href)}` });
 });
 
 // Same-origin streaming proxy: yt-dlp stdout -> FFmpeg MP3 stdout -> browser.
 // No complete audio file is written to disk.
 app.get("/api/music/stream", (req, res) => {
-  const videoUrl = String(req.query.video || "");
+  const videoUrl = String(req.query.url || req.query.video || "");
   if (!isYouTubeUrl(videoUrl)) return res.status(400).json({ error: "URL YouTube tidak valid." });
   res.setHeader("Content-Type", "audio/mpeg");
   res.setHeader("Cache-Control", "no-store");
