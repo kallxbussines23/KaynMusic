@@ -145,8 +145,13 @@ app.get("/api/music/stream", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
 
+  // Try several unauthenticated YouTube player clients instead of pinning
+  // extraction to Android (which is frequently challenged from datacenter IPs).
+  // YouTube may still require verification or a PO token; no client list can
+  // guarantee access when Google blocks the hosting IP.
   const extractor = spawn("yt-dlp", ytDlpArgs([
-    "--no-warnings", "--no-playlist", "--extractor-args", "youtube:player_client=android",
+    "--no-warnings", "--no-playlist",
+    "--extractor-args", "youtube:player_client=tv_embedded,web_safari,android",
     "-f", "bestaudio/best", "-o", "-", videoUrl
   ]), { stdio: ["ignore", "pipe", "pipe"] });
   const transcoder = spawn("ffmpeg", [
