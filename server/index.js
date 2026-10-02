@@ -44,12 +44,13 @@ function runYtDlp(args, timeoutMs = 25000) {
   });
 }
 
-// Retry standard extraction with available YouTube player clients. This does not bypass access restrictions.
+// Try multiple unauthenticated clients and IPv4. YouTube may still block cloud IPs.
 async function runYtDlpWithFallback(args, timeoutMs = 25000) {
-  const attempts = ["tv", "android_vr", "web_safari", null];
+  const attempts = ["tv_downgraded", "android_vr", "web_embedded", null];
   const failures = [];
   for (const client of attempts) {
-    const attempt = client ? [...args, "--extractor-args", `youtube:player_client=${client}`] : args;
+    const attempt = ["--force-ipv4", "--ignore-config", ...args];
+    if (client) attempt.push("--extractor-args", `youtube:player_client=${client}`);
     try {
       return await runYtDlp(ytDlpArgs(attempt), timeoutMs);
     } catch (error) {
@@ -87,9 +88,8 @@ app.get("/api/music/search", async (req, res) => {
       throw new Error("No video results");
     } catch (error) { failures.push(`${base}: ${error.message}`); }
   }
-  // Last resort: yt-dlp search may still work on some deployments.
   try {
-    const raw = await runYtDlp(["--dump-single-json", "--flat-playlist", "--no-warnings", "--playlist-end", "12", `ytsearch12:${query}`]);
+    const raw = await runYtDlp(["--force-ipv4", "--ignore-config", "--dump-single-json", "--flat-playlist", "--no-warnings", "--playlist-end", "12", `ytsearch12:${query}`]);
     const data = JSON.parse(raw);
     const entries = (data.entries || []).filter(Boolean).map(item => ({
       id: item.id, title: item.title || "Untitled", channel: item.uploader || item.channel || "YouTube",
@@ -137,7 +137,6 @@ app.post("/api/music/resolve", async (req, res) => {
   }
 });
 
-// Audio extraction and transcoding use yt-dlp and FFmpeg without saving complete files to disk.
 app.get("/api/music/stream", (req, res) => {
   const videoUrl = String(req.query.url || req.query.video || "");
   if (!isYouTubeUrl(videoUrl)) return res.status(400).json({ error: "URL YouTube tidak valid." });
@@ -145,13 +144,9 @@ app.get("/api/music/stream", (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
 
-  // Try several unauthenticated YouTube player clients instead of pinning
-  // extraction to Android (which is frequently challenged from datacenter IPs).
-  // YouTube may still require verification or a PO token; no client list can
-  // guarantee access when Google blocks the hosting IP.
   const extractor = spawn("yt-dlp", ytDlpArgs([
-    "--no-warnings", "--no-playlist",
-    "--extractor-args", "youtube:player_client=tv,android_vr,web_safari",
+    "--force-ipv4", "--ignore-config", "--no-warnings", "--no-playlist",
+    "--extractor-args", "youtube:player_client=tv_downgraded,android_vr,web_embedded",
     "-f", "bestaudio/best", "-o", "-", videoUrl
   ]), { stdio: ["ignore", "pipe", "pipe"] });
   const transcoder = spawn("ffmpeg", [
@@ -190,7 +185,6 @@ const io = new Server(server, { cors: { origin: process.env.CLIENT_ORIGIN || "*"
 const PORT = Number(process.env.PORT || 3000);
 app.get("/api/health", (_req, res) => res.json({ ok: true, service: "KaynMusic", timestamp: Date.now() }));
 
-// Temporary in-memory presence/chat. Add auth, persistence, limits and moderation before production.
 const rooms = new Map();
 io.on("connection", socket => {
   socket.on("room:join", ({ roomId, username } = {}) => {
