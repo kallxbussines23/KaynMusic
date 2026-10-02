@@ -46,7 +46,7 @@ function runYtDlp(args, timeoutMs = 25000) {
 
 // Retry standard extraction with available YouTube player clients. This does not bypass access restrictions.
 async function runYtDlpWithFallback(args, timeoutMs = 25000) {
-  const attempts = [null, "web", "android"];
+  const attempts = ["tv", "android_vr", "web_safari", null];
   const failures = [];
   for (const client of attempts) {
     const attempt = client ? [...args, "--extractor-args", `youtube:player_client=${client}`] : args;
@@ -151,7 +151,7 @@ app.get("/api/music/stream", (req, res) => {
   // guarantee access when Google blocks the hosting IP.
   const extractor = spawn("yt-dlp", ytDlpArgs([
     "--no-warnings", "--no-playlist",
-    "--extractor-args", "youtube:player_client=tv_embedded,web_safari,android",
+    "--extractor-args", "youtube:player_client=tv,android_vr,web_safari",
     "-f", "bestaudio/best", "-o", "-", videoUrl
   ]), { stdio: ["ignore", "pipe", "pipe"] });
   const transcoder = spawn("ffmpeg", [
