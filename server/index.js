@@ -61,6 +61,12 @@ async function runYtDlpWithFallback(args, timeoutMs = 25000) {
   throw error;
 }
 
+const PIPED_INSTANCES = [
+  "https://pipedapi.kavin.rocks",
+  "https://pipedapi.adminforge.de",
+  "https://pipedapi.r4fo.com"
+];
+
 app.get("/api/music/search", async (req, res) => {
   const query = String(req.query.q || "").trim().slice(0, 160);
   if (!query) return res.status(400).json({ error: "Masukkan kata kunci pencarian." });
