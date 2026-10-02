@@ -15,6 +15,8 @@ import makeWASocket, {
 import pino from "pino";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import { createInterface } from "node:readline/promises";
+import { stdin, stdout } from "node:process";
 
 const PREFIX = ".";
 const AUTH_DIR = "./kayn-wa-auth";
@@ -150,6 +152,14 @@ async function startBot() {
   if (starting) return;
   starting = true;
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  let pairingNumber = process.env.PAIRING_NUMBER || "";
+  if (!state.creds.registered && !pairingNumber) {
+    const rl = createInterface({ input: stdin, output: stdout });
+    pairingNumber = await rl.question("Masukkan nomor WhatsApp (contoh 628123456789): ");
+    rl.close();
+    pairingNumber = pairingNumber.replace(/\\D/g, "");
+    if (!/^\\d{10,15}$/.test(pairingNumber)) throw new Error("Nomor tidak valid. Gunakan kode negara, contoh 628123456789.");
+  }
   let version;
   try { ({ version } = await fetchLatestBaileysVersion()); } catch {}
 
@@ -167,8 +177,8 @@ async function startBot() {
 
   let pairingRequested = false;
   sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
-    if (qr) console.log("QR login tersedia. Jika memakai HP yang sama, gunakan PAIRING_NUMBER.");
-    if (!pairingRequested && !state.creds.registered && process.env.PAIRING_NUMBER) {
+    if (qr) console.log("Menyiapkan pairing code...");
+    if (!pairingRequested && !state.creds.registered && pairingNumber) {
       pairingRequested = true;
       try {
         const number = process.env.PAIRING_NUMBER.replace(/\D/g, "");
