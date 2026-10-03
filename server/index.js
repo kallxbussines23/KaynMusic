@@ -189,7 +189,7 @@ app.get("/api/music/stream", (req, res) => {
  * Lightweight KaynAPI gateway. The secret stays on the KaynMusic server;
  * yt-dlp/FFmpeg work is performed by KaynAPI, not this service.
  */
-const KAYN_API_BASE = (process.env.KAYN_API_BASE_URL || "https://api.kayn.my.id/api/v1").replace(/\\/$/, "");
+const KAYN_API_BASE = (process.env.KAYN_API_BASE_URL || "https://kaynapi.up.railway.app/api/v1").replace(/\\/$/, "");
 function kaynApiHeaders() {
   if (!process.env.KAYN_API_KEY) throw new Error("KAYN_API_KEY belum diatur di Railway Variables.");
   return { Authorization: `Bearer ${process.env.KAYN_API_KEY}` };
