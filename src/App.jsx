@@ -87,7 +87,7 @@ export default function App() {
     if (!query.trim()) return;
     setSearching(true); setSearchError("");
     try {
-      const response = await fetch(`/api/music/search?q=${encodeURIComponent(query.trim())}`);
+      const response = await fetch(`/api/kayn/music/search?q=${encodeURIComponent(query.trim())}`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Search failed");
       setSearchResults(data.results || []);
@@ -98,7 +98,7 @@ export default function App() {
     setSoloLoading(true); setSoloStatus("Preparing audio stream…");
     try {
       // Use metadata already returned by search; start the stream directly.
-      const streamUrl = `/api/music/stream?url=${encodeURIComponent(track.url)}`;
+      const streamUrl = `/api/kayn/music/stream?url=${encodeURIComponent(track.url)}`;
       setSoloTrack({ ...track, streamUrl, title: track.title || "YouTube track" });
       setSoloStatus("Ready to play");
       const audio = soloAudioRef.current;
@@ -124,7 +124,7 @@ export default function App() {
     if (!trackUrl.trim() || !socket) return;
     let url = trackUrl.trim();
     if (/youtube\\.com|youtu\\.be/i.test(url)) {
-      url = `/api/music/stream?url=${encodeURIComponent(url)}`;
+      url = `/api/kayn/music/stream?url=${encodeURIComponent(url)}`;
     }
     socket.emit("music:load", { url, title: trackName.trim() || "Shared track" });
     setTrackStatus("Track shared with room.");
