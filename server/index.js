@@ -184,6 +184,66 @@ app.get("/api/music/stream", (req, res) => {
   transcoder.on("close", code => { if (code && !res.writableEnded) fail("ffmpeg", `exit code ${code}`); });
 });
 
+
+/**
+ * Lightweight KaynAPI gateway. The secret stays on the KaynMusic server;
+ * yt-dlp/FFmpeg work is performed by KaynAPI, not this service.
+ */
+const KAYN_API_BASE = (process.env.KAYN_API_BASE_URL || "https://api.kayn.my.id/api/v1").replace(/\\/$/, "");
+function kaynApiHeaders() {
+  if (!process.env.KAYN_API_KEY) throw new Error("KAYN_API_KEY belum diatur di Railway Variables.");
+  return { Authorization: `Bearer ${process.env.KAYN_API_KEY}` };
+}
+app.get("/api/kayn/music/search", async (req, res) => {
+  const query = String(req.query.q || "").trim().slice(0, 160);
+  if (query.length < 2) return res.status(400).json({ error: "Masukkan kata kunci minimal 2 karakter." });
+  try {
+    const upstream = await fetch(`${KAYN_API_BASE}/media/api/search`, {
+      method: "POST", headers: { ...kaynApiHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ query, limit: 12 }), signal: AbortSignal.timeout(50000)
+    });
+    const data = await upstream.json();
+    if (!upstream.ok) return res.status(upstream.status).json({ error: data.error?.message || data.message || "KaynAPI search gagal." });
+    res.json({ results: data.results || [], provider: "KaynAPI" });
+  } catch (error) {
+    console.error("[kaynapi:search]", error.message);
+    res.status(502).json({ error: error.message || "KaynAPI tidak dapat dijangkau." });
+  }
+});
+app.get("/api/kayn/music/stream", async (req, res) => {
+  const url = String(req.query.url || "");
+  if (!/^https?:\\/\\//i.test(url)) return res.status(400).json({ error: "URL media tidak valid." });
+  try {
+    const upstream = await fetch(`${KAYN_API_BASE}/media/api/Spotify/watch?url=${encodeURIComponent(url)}`, {
+      headers: kaynApiHeaders(), signal: AbortSignal.timeout(60000)
+    });
+    if (!upstream.ok || !upstream.body) {
+      const detail = await upstream.text().catch(() => "");
+      return res.status(upstream.status || 502).json({ error: detail.slice(0, 1000) || "KaynAPI gagal menyiapkan stream." });
+    }
+    res.status(upstream.status);
+    res.setHeader("Content-Type", upstream.headers.get("content-type") || "audio/mpeg");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    const reader = upstream.body.getReader();
+    req.on("close", () => reader.cancel().catch(() => {}));
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!res.write(Buffer.from(value))) await new Promise(resolve => res.once("drain", resolve));
+      }
+      res.end();
+    } catch (error) {
+      if (!res.destroyed) res.destroy(error);
+    }
+  } catch (error) {
+    console.error("[kaynapi:stream]", error.message);
+    if (!res.headersSent) res.status(502).json({ error: error.message || "KaynAPI stream tidak dapat dijangkau." });
+    else res.destroy(error);
+  }
+});
+
 const server = createServer(app);
 const io = new Server(server, { cors: { origin: process.env.CLIENT_ORIGIN || "*" } });
 const PORT = Number(process.env.PORT || 3000);
