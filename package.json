@@ -24,6 +24,7 @@
     "react-dom": "latest",
     "socket.io": "latest",
     "socket.io-client": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "@coflyn/scrapr": "^1.2.0"
   }
 }
