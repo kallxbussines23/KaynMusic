@@ -25,6 +25,7 @@
     "socket.io": "latest",
     "socket.io-client": "latest",
     "vite": "latest",
-    "@coflyn/scrapr": "^1.2.0"
+    "@coflyn/scrapr": "^1.2.0",
+    "@hoangquyet/ytdown": "^1.0.2"
   }
 }
