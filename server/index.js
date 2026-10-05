@@ -115,7 +115,7 @@ function isYouTubeUrl(value) {
   } catch { return null; }
 }
 
-const SCRAPR_CACHE_TTL = 20 * 60 * 1000;
+const SCRAPR_CACHE_TTL = 5 * 60 * 1000;
 const scraprAudioCache = new Map();
 
 function pickAudioDownload(result) {
