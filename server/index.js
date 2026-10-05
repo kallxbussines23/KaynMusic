@@ -9,6 +9,7 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import scrapr from "@coflyn/scrapr";
+import YTdownload from "@hoangquyet/ytdown";
 
 const { youtube } = scrapr;
 
@@ -123,6 +124,37 @@ function pickAudioDownload(result) {
     || downloads.find(item => /^https?:\/\//i.test(item?.url));
 }
 
+async function resolveYtdownAudio(videoUrl) {
+  const info = await YTdownload.json(videoUrl);
+  const formats = Array.isArray(info?.formats) ? info.formats : [];
+  const candidates = formats
+    .filter(item => item?.kind === "audio" && item?.url && item?.reach !== "none")
+    .sort((a, b) => Number(b.bitrate || 0) - Number(a.bitrate || 0));
+
+  const audio = candidates.find(item => item.reach === "whole") || candidates[0];
+  if (!audio?.url) {
+    const recommended = info?.recommended?.muxed;
+    if (recommended?.url) {
+      return {
+        directUrl: recommended.url,
+        title: info?.title || "YouTube track",
+        thumbnail: info?.thumbnail || null,
+        quality: recommended.qualityLabel || "muxed",
+        provider: "ytdown"
+      };
+    }
+    throw new Error("ytdown tidak menemukan URL media yang bisa diputar.");
+  }
+
+  return {
+    directUrl: audio.url,
+    title: info?.title || "YouTube track",
+    thumbnail: info?.thumbnail || null,
+    quality: audio.qualityLabel || audio.bitrate ? String(audio.bitrate || "audio") : "audio",
+    provider: "ytdown"
+  };
+}
+
 async function resolveScraprAudio(videoUrl) {
   const parsed = isYouTubeUrl(videoUrl);
   if (!parsed) throw new Error("URL YouTube tidak valid.");
@@ -159,7 +191,15 @@ async function resolveScraprAudio(videoUrl) {
     }
   }
 
-  const error = new Error("Semua resolver scrapr gagal.");
+  try {
+    const fallback = await resolveYtdownAudio(key);
+    scraprAudioCache.set(key, { value: fallback, expiresAt: Date.now() + SCRAPR_CACHE_TTL });
+    return fallback;
+  } catch (error) {
+    failures.push(`ytdown: ${error.message || String(error)}`);
+  }
+
+  const error = new Error("Semua resolver YouTube gagal.");
   error.details = failures;
   throw error;
 }
