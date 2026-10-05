@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import scrapr from "@coflyn/scrapr";
+
+const { youtube } = scrapr;
 
 const app = express();
 app.use(cors());
@@ -111,79 +114,137 @@ function isYouTubeUrl(value) {
   } catch { return null; }
 }
 
+const SCRAPR_CACHE_TTL = 20 * 60 * 1000;
+const scraprAudioCache = new Map();
+
+function pickAudioDownload(result) {
+  const downloads = Array.isArray(result?.downloads) ? result.downloads : [];
+  return downloads.find(item => item?.type === "audio" && /^https?:\/\//i.test(item.url))
+    || downloads.find(item => /^https?:\/\//i.test(item?.url));
+}
+
+async function resolveScraprAudio(videoUrl) {
+  const parsed = isYouTubeUrl(videoUrl);
+  if (!parsed) throw new Error("URL YouTube tidak valid.");
+
+  const key = parsed.href;
+  const cached = scraprAudioCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  scraprAudioCache.delete(key);
+
+  const attempts = [
+    async () => youtube.ytmp3(key, "mp3"),
+    async () => youtube.ytmp3gg(key, { format: "mp3" })
+  ];
+  const failures = [];
+
+  for (const attempt of attempts) {
+    try {
+      const response = await attempt();
+      if (!response?.status) throw new Error(response?.message || "Scrapr resolver returned no result");
+      const download = pickAudioDownload(response.result);
+      if (!download) throw new Error("Scrapr returned no playable audio URL");
+
+      const value = {
+        directUrl: download.url,
+        title: response.result?.title || "YouTube track",
+        thumbnail: response.result?.thumbnail || null,
+        quality: download.quality || null,
+        provider: "scrapr"
+      };
+      scraprAudioCache.set(key, { value, expiresAt: Date.now() + SCRAPR_CACHE_TTL });
+      return value;
+    } catch (error) {
+      failures.push(error.message || String(error));
+    }
+  }
+
+  const error = new Error("Semua resolver scrapr gagal.");
+  error.details = failures;
+  throw error;
+}
+
 app.post("/api/music/resolve", async (req, res) => {
   const videoUrl = String(req.body?.url || "");
-  const parsed = isYouTubeUrl(videoUrl);
-  if (!parsed) return res.status(400).json({ error: "URL YouTube tidak valid." });
+  if (!isYouTubeUrl(videoUrl)) return res.status(400).json({ error: "URL YouTube tidak valid." });
+
   try {
-    const raw = await runYtDlpWithFallback(["--dump-single-json", "--no-warnings", "--no-playlist", videoUrl]);
-    const info = JSON.parse(raw);
+    const audio = await resolveScraprAudio(videoUrl);
     res.json({
-      url: `/api/music/stream?url=${encodeURIComponent(parsed.href)}`,
-      title: info.title || "YouTube track",
-      duration: info.duration || null,
-      thumbnail: info.thumbnail || null
+      url: `/api/music/stream?url=${encodeURIComponent(videoUrl)}`,
+      title: audio.title,
+      thumbnail: audio.thumbnail,
+      quality: audio.quality,
+      provider: audio.provider
     });
   } catch (error) {
     const errorId = crypto.randomUUID();
     const details = (error.details || [error.message]).join("\\n").slice(0, 5000);
-    console.error("[music:resolve] extraction failed", JSON.stringify({ errorId, url: videoUrl, details }));
+    console.error("[music:resolve] scrapr failed", JSON.stringify({ errorId, url: videoUrl, details }));
     res.status(502).json({
-      error: "Ekstraksi audio gagal setelah semua percobaan.",
+      error: "Scrapr gagal menyiapkan audio.",
       errorId,
-      stage: "yt-dlp metadata extraction",
+      stage: "scrapr YouTube resolver",
       details
     });
   }
 });
 
-app.get("/api/music/stream", (req, res) => {
+app.get("/api/music/stream", async (req, res) => {
   const videoUrl = String(req.query.url || req.query.video || "");
   if (!isYouTubeUrl(videoUrl)) return res.status(400).json({ error: "URL YouTube tidak valid." });
-  res.setHeader("Content-Type", "audio/mpeg");
-  res.setHeader("Cache-Control", "no-store");
-  res.setHeader("X-Content-Type-Options", "nosniff");
 
-  // Pipe audio through FFmpeg without writing the complete track to disk.
-  // Frequent packet flushing reduces startup latency for progressive playback.
-  const extractor = spawn("yt-dlp", ytDlpArgs([
-    "--force-ipv4", "--ignore-config", "--no-warnings", "--no-playlist",
-    "--no-part", "--extractor-args", "youtube:player_client=tv_downgraded,android_vr,web_embedded",
-    "-f", "bestaudio/best", "-o", "-", videoUrl
-  ]), { stdio: ["ignore", "pipe", "pipe"] });
-  const transcoder = spawn("ffmpeg", [
-    "-hide_banner", "-loglevel", "error", "-fflags", "nobuffer",
-    "-i", "pipe:0", "-vn", "-ac", "2", "-ar", "44100", "-b:a", "160k",
-    "-flush_packets", "1", "-write_xing", "0", "-id3v2_version", "0",
-    "-f", "mp3", "pipe:1"
-  ], { stdio: ["pipe", "pipe", "pipe"] });
-  let stderr = "";
-  let failed = false;
-  const abort = () => { extractor.kill("SIGKILL"); transcoder.kill("SIGKILL"); };
-  res.on("close", () => { if (!res.writableEnded) abort(); });
-  transcoder.stdin.on("error", () => {});
-  extractor.stdout.pipe(transcoder.stdin);
-  transcoder.stdout.pipe(res);
-  for (const child of [extractor, transcoder]) {
-    child.stderr.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-5000); });
-    child.on("error", error => fail(child === extractor ? "yt-dlp" : "ffmpeg", error.message));
-  }
-  function fail(stage, reason) {
-    if (failed) return;
-    failed = true;
-    console.error(`[music:stream] ${stage} failed:`, reason, stderr);
-    if (!res.headersSent) res.status(502).json({
-      error: "Streaming gagal setelah ekstraksi.",
-      stage,
-      details: `${reason}\\n${stderr}`.slice(0, 5000)
+  try {
+    const audio = await resolveScraprAudio(videoUrl);
+    const headers = {
+      "User-Agent": req.get("user-agent") || "Mozilla/5.0",
+      "Accept": "audio/mpeg,audio/*;q=0.9,*/*;q=0.5"
+    };
+    if (req.headers.range) headers.Range = req.headers.range;
+
+    const upstream = await fetch(audio.directUrl, {
+      headers,
+      redirect: "follow",
+      signal: AbortSignal.timeout(60000)
     });
-    else if (!res.writableEnded) res.destroy();
-    abort();
-  }
-  extractor.on("close", code => { if (code && !res.writableEnded) fail("yt-dlp", `exit code ${code}`); });
-  transcoder.on("close", code => { if (code && !res.writableEnded) fail("ffmpeg", `exit code ${code}`); });
-});
+    if (!upstream.ok || !upstream.body) {
+      throw new Error(`Audio upstream HTTP ${upstream.status}`);
+    }
 
+    res.status(upstream.status);
+    for (const header of ["content-type", "content-length", "content-range", "accept-ranges", "etag", "last-modified"]) {
+      const value = upstream.headers.get(header);
+      if (value) res.setHeader(header, value);
+    }
+    if (!res.getHeader("Content-Type")) res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Cache-Control", "private, max-age=300");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-KaynMusic-Provider", "scrapr");
+
+    const reader = upstream.body.getReader();
+    req.on("close", () => reader.cancel().catch(() => {}));
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!res.write(Buffer.from(value))) await new Promise(resolve => res.once("drain", resolve));
+    }
+    res.end();
+  } catch (error) {
+    const errorId = crypto.randomUUID();
+    const details = (error.details || [error.message]).join("\\n").slice(0, 5000);
+    console.error("[music:stream] scrapr failed", JSON.stringify({ errorId, url: videoUrl, details }));
+    if (!res.headersSent) {
+      res.status(502).json({
+        error: "Streaming audio lewat scrapr gagal.",
+        errorId,
+        stage: "scrapr stream proxy",
+        details
+      });
+    } else {
+      res.destroy(error);
+    }
+  }
+});
 
 /**
  * Lightweight KaynAPI gateway. The secret stays on the KaynMusic server;
